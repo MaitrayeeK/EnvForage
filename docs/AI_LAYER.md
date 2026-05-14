@@ -193,7 +193,7 @@ backend/
         │   ├── system.py          # System prompt constants        ✅
         │   └── troubleshoot.py    # TroubleshootPromptBuilder      ✅
         ├── models.py              # Request, Response, Meta models ✅
-        ├── service.py             # AITroubleshootService          🔲
+        ├── service.py             # AITroubleshootService          ✅
         └── tests/
             ├── test_safety.py                                      🔲
             ├── test_service.py                                     🔲

@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `TroubleshootPromptBuilder` class — converts DiagnosticReport + profile context into structured LLM user messages with CUDA matrix injection and prompt injection sanitisation.
   - `TroubleshootRequest` Pydantic model — structured input contract for the AI troubleshoot endpoint.
   - `LLMResponseMeta` model for audit logging (provider, model, token usage).
+- **Phase 4 — Part 3**: Troubleshoot Service + API Endpoint.
+  - `AITroubleshootService` orchestrator — full pipeline: prompt build → LLM call → safety filter → DB persist → audit log.
+  - `POST /api/v1/troubleshoot` endpoint with structured error handling (503 for LLM errors, 500 for safety violations).
+  - Registered troubleshoot router in FastAPI app.
 
 ## [0.3.0] - 2026-05-14
 

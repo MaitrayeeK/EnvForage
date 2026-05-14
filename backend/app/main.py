@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import profiles, scripts, diagnose
+from app.api.v1 import profiles, scripts, diagnose, troubleshoot
 from app.config import get_settings
 
 
@@ -53,6 +53,7 @@ def create_app() -> FastAPI:
     app.include_router(profiles.router, prefix="/api/v1", tags=["profiles"])
     app.include_router(scripts.router, prefix="/api/v1", tags=["scripts"])
     app.include_router(diagnose.router, prefix="/api/v1", tags=["diagnose"])
+    app.include_router(troubleshoot.router, prefix="/api/v1", tags=["ai"])
 
     # ── Health check ──────────────────────────────────────────
     @app.get("/health", include_in_schema=False)

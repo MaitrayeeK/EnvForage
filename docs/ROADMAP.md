@@ -126,8 +126,8 @@ on Windows, WSL2, and Ubuntu 22.04. ✅
 - [x] LLM provider abstraction (pluggable: OpenAI, OpenRouter, Ollama)
 - [x] Structured prompt builder (diagnostic context → prompt)
 - [x] `SuggestedFix` response schema (Pydantic)
-- [ ] Shell command safety filter
-- [ ] `POST /api/troubleshoot` endpoint
+- [x] Shell command safety filter
+- [x] `POST /api/troubleshoot` endpoint
 - [ ] `POST /api/repair` endpoint (generates repair scripts)
 - [ ] Frontend AI chat interface
 - [ ] Rate limiting (Redis-based, Phase 4.5)

@@ -1,0 +1,237 @@
+"""AI Troubleshoot Service — orchestrates the full troubleshooting pipeline.
+
+Pipeline:
+    1. Build structured prompt from diagnostic context
+    2. Call LLM provider for analysis
+    3. Validate AI output through SafetyFilter
+    4. Persist session + suggestions to DB for audit
+    5. Return structured TroubleshootResponse
+"""
+import hashlib
+import logging
+import time
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.ai.models import (
+    LLMResponseMeta,
+    SuggestedFix,
+    TroubleshootRequest,
+    TroubleshootResponse,
+)
+from app.ai.prompts.system import TROUBLESHOOT_SYSTEM_PROMPT
+from app.ai.prompts.troubleshoot import TroubleshootPromptBuilder
+from app.ai.providers import get_provider
+from app.ai.providers.base import LLMProviderError
+from app.models.ai_session import AIAuditLog, AISession, AISuggestion
+from app.templates.safety import SafetyViolationError, validate_rendered_output
+
+logger = logging.getLogger(__name__)
+
+
+class AITroubleshootService:
+    """
+    Orchestrates AI-assisted troubleshooting.
+
+    This service is the single entry point for all AI troubleshooting
+    operations. It coordinates prompt building, LLM calls, safety
+    validation, database persistence, and response assembly.
+
+    Usage::
+
+        service = AITroubleshootService()
+        response = await service.troubleshoot(request, db_session)
+    """
+
+    def __init__(self) -> None:
+        self._prompt_builder = TroubleshootPromptBuilder()
+
+    async def troubleshoot(
+        self,
+        request: TroubleshootRequest,
+        db: AsyncSession,
+    ) -> TroubleshootResponse:
+        """
+        Run the full AI troubleshooting pipeline.
+
+        Args:
+            request: Structured troubleshoot request with diagnostic data.
+            db: Async database session for audit persistence.
+
+        Returns:
+            TroubleshootResponse with root cause analysis and fix suggestions.
+
+        Raises:
+            LLMProviderError: If the LLM call fails after retries.
+            SafetyViolationError: If AI output contains forbidden patterns.
+        """
+        session_id = str(uuid.uuid4())
+        start_time = time.monotonic()
+        input_hash = self._hash_input(request)
+
+        # ── Step 1: Build prompt ──────────────────────────────────────────
+        user_message = self._prompt_builder.build(request)
+        logger.info("Troubleshoot prompt built (%d chars)", len(user_message))
+
+        # ── Step 2: Call LLM ──────────────────────────────────────────────
+        provider = get_provider()
+        provider_name = type(provider).__name__
+        model_name = getattr(provider, "model", "unknown")
+
+        try:
+            # The LLM returns a TroubleshootResponse directly
+            # We need a response model WITHOUT session_id (LLM doesn't know it)
+            llm_result = await provider.complete(
+                system_prompt=TROUBLESHOOT_SYSTEM_PROMPT,
+                user_message=user_message,
+                response_model=TroubleshootResponse,
+            )
+        except LLMProviderError as exc:
+            # Log the failed attempt
+            latency_ms = int((time.monotonic() - start_time) * 1000)
+            await self._log_audit(
+                db, session_id=None, input_hash=input_hash,
+                safety_passed=False, safety_violation=f"LLM error: {exc.reason}",
+                provider=provider_name, tokens_used=0, latency_ms=latency_ms,
+            )
+            raise
+
+        # ── Step 3: Safety filter ─────────────────────────────────────────
+        # Validate all text fields in the response
+        safety_violation: str | None = None
+        try:
+            self._validate_response_safety(llm_result)
+        except SafetyViolationError as exc:
+            safety_violation = str(exc)
+            latency_ms = int((time.monotonic() - start_time) * 1000)
+            await self._log_audit(
+                db, session_id=None, input_hash=input_hash,
+                safety_passed=False, safety_violation=safety_violation,
+                provider=provider_name, tokens_used=0, latency_ms=latency_ms,
+            )
+            raise
+
+        # ── Step 4: Enrich response ───────────────────────────────────────
+        llm_result.session_id = session_id
+        llm_result.repair_script_available = any(
+            fix.repair_template_id is not None
+            for fix in llm_result.suggested_fixes
+        )
+
+        # ── Step 5: Persist to DB ─────────────────────────────────────────
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+        token_usage = getattr(provider, "last_token_usage", None)
+        if callable(token_usage):
+            token_usage = token_usage()
+        elif not isinstance(token_usage, dict):
+            token_usage = getattr(provider, "_last_usage", None)
+
+        total_tokens = token_usage.get("total_tokens", 0) if token_usage else 0
+
+        await self._persist_session(
+            db, session_id, request, llm_result, provider_name, model_name,
+        )
+        await self._log_audit(
+            db, session_id=session_id, input_hash=input_hash,
+            safety_passed=True, safety_violation=None,
+            provider=provider_name, tokens_used=total_tokens,
+            latency_ms=latency_ms,
+        )
+
+        logger.info(
+            "Troubleshoot complete: session=%s, fixes=%d, confidence=%.2f, latency=%dms",
+            session_id, len(llm_result.suggested_fixes),
+            llm_result.confidence, latency_ms,
+        )
+
+        return llm_result
+
+    # ── Private helpers ───────────────────────────────────────────────────
+
+    def _hash_input(self, request: TroubleshootRequest) -> str:
+        """Create a SHA-256 hash of the input for audit logging (no PII)."""
+        raw = request.model_dump_json()
+        return hashlib.sha256(raw.encode()).hexdigest()[:64]
+
+    def _validate_response_safety(self, response: TroubleshootResponse) -> None:
+        """Run all text fields through the template SafetyFilter."""
+        # Validate root cause text
+        validate_rendered_output(response.root_cause, "ai_root_cause")
+
+        # Validate each suggestion
+        for fix in response.suggested_fixes:
+            validate_rendered_output(fix.title, "ai_fix_title")
+            validate_rendered_output(fix.description, "ai_fix_description")
+            for cmd in fix.safe_commands:
+                validate_rendered_output(cmd, "ai_safe_command")
+
+    async def _persist_session(
+        self,
+        db: AsyncSession,
+        session_id: str,
+        request: TroubleshootRequest,
+        response: TroubleshootResponse,
+        provider_name: str,
+        model_name: str,
+    ) -> None:
+        """Persist the AI session and suggestions to the database."""
+        try:
+            db_session = AISession(
+                id=uuid.UUID(session_id),
+                provider=provider_name,
+                model=model_name,
+                created_at=datetime.utcnow(),
+            )
+            db.add(db_session)
+            await db.flush()
+
+            for fix in response.suggested_fixes:
+                db_suggestion = AISuggestion(
+                    id=uuid.uuid4(),
+                    session_id=db_session.id,
+                    step_number=fix.step,
+                    title=fix.title,
+                    description=fix.description,
+                    severity=fix.severity,
+                    safe_commands=fix.safe_commands if fix.safe_commands else None,
+                    template_id=fix.repair_template_id,
+                    created_at=datetime.utcnow(),
+                )
+                db.add(db_suggestion)
+
+        except Exception as exc:
+            logger.error("Failed to persist AI session: %s", exc)
+            # Don't fail the request if persistence fails
+            # The response is still valid
+
+    async def _log_audit(
+        self,
+        db: AsyncSession,
+        *,
+        session_id: str | None,
+        input_hash: str,
+        safety_passed: bool,
+        safety_violation: str | None,
+        provider: str,
+        tokens_used: int,
+        latency_ms: int,
+    ) -> None:
+        """Write an audit log entry for the AI interaction."""
+        try:
+            log = AIAuditLog(
+                id=uuid.uuid4(),
+                session_id=uuid.UUID(session_id) if session_id else None,
+                input_hash=input_hash,
+                safety_passed=safety_passed,
+                safety_violation=safety_violation,
+                provider=provider,
+                tokens_used=tokens_used,
+                latency_ms=latency_ms,
+                created_at=datetime.utcnow(),
+            )
+            db.add(log)
+        except Exception as exc:
+            logger.error("Failed to write audit log: %s", exc)

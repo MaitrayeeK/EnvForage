@@ -286,6 +286,8 @@ are Phase 5 deliverables.
 - `backend/app/ai/providers/__init__.py` — `get_provider()` factory function
 - `backend/app/ai/prompts/system.py` — System prompt constants with safety rules and repair template IDs
 - `backend/app/ai/prompts/troubleshoot.py` — `TroubleshootPromptBuilder` (diagnostic → LLM user message)
+- `backend/app/ai/service.py` — `AITroubleshootService` orchestrator (pipeline: prompt → LLM → safety → persist)
+- `backend/app/api/v1/troubleshoot.py` — `POST /api/v1/troubleshoot` endpoint
 
 ### AI Provider Interface
 
