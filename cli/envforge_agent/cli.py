@@ -92,8 +92,7 @@ def diagnose(output: str | None, send: bool, api_url: str, quiet: bool, sarif: b
 
 # ── SARIF output ────────────────────────────────────────────────────────
     if sarif:
-        import json as _json
-        click.echo(_json.dumps(report.to_sarif(), indent=2))
+        click.echo(json.dumps(report.to_sarif(), indent=2))
         return
     
     report_json = report.to_json(indent=2)
