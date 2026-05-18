@@ -1,34 +1,54 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { useParams } from "next/navigation";
 import { api } from "../../services/api";
 import { Profile } from "../../types";
-import { ArrowLeft, Box, CheckCircle, Cpu, ShieldAlert, Terminal } from "lucide-react";
+import { Box, Cpu, Search, ShieldAlert, Terminal, Layers, SlidersHorizontal } from "lucide-react";
 
-export default function ProfileDetailPage() {
-  const params = useParams();
-  const slug = params.slug as string;
-  
-  const [profile, setProfile] = useState<Profile | null>(null);
+export default function ProfilesPage() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Filter and search state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedOS, setSelectedOS] = useState("ALL");
+  const [cudaFilter, setCudaFilter] = useState("ALL"); // ALL, REQUIRED, OPTIONAL
+
   useEffect(() => {
-    async function loadProfile() {
+    async function loadProfiles() {
       try {
-        const data = await api.getProfile(slug);
-        setProfile(data);
+        const data = await api.getProfiles();
+        setProfiles(data);
       } catch (err: any) {
-        setError(err.message || "Failed to load profile");
+        setError(err.message || "Failed to load profiles");
       } finally {
         setLoading(false);
       }
     }
-    loadProfile();
-  }, [slug]);
+    loadProfiles();
+  }, []);
+
+  // Filter profiles based on search and selected options
+  const filteredProfiles = profiles.filter((p) => {
+    const matchesSearch =
+      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.tags.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesOS =
+      selectedOS === "ALL" ||
+      p.os_support.some((os) => os.toUpperCase() === selectedOS.toUpperCase());
+
+    const matchesCuda =
+      cudaFilter === "ALL" ||
+      (cudaFilter === "REQUIRED" && p.cuda_required) ||
+      (cudaFilter === "OPTIONAL" && !p.cuda_required);
+
+    return matchesSearch && matchesOS && matchesCuda;
+  });
 
   if (loading) {
     return (
@@ -36,116 +56,180 @@ export default function ProfileDetailPage() {
         <motion.div animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: "linear" }} style={{ display: 'inline-block', marginBottom: '1rem' }}>
           <Cpu size={40} />
         </motion.div>
-        <h2>Loading Profile Data...</h2>
+        <h2>Loading Environment Profiles...</h2>
       </div>
     );
   }
 
-  if (error || !profile) {
+  if (error) {
     return (
       <div className="container" style={{ paddingTop: '6rem', textAlign: 'center' }}>
         <ShieldAlert size={48} color="#ef4444" style={{ margin: '0 auto 1rem' }} />
-        <h2 style={{ marginBottom: '1rem' }}>Error Loading Profile</h2>
+        <h2 style={{ marginBottom: '1rem' }}>Error Loading Profiles</h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '2rem' }}>{error}</p>
-        <Link href="/profiles" className="btn btn-secondary">← Back to Profiles</Link>
+        <button onClick={() => window.location.reload()} className="btn btn-primary">Try Again</button>
       </div>
     );
   }
 
   return (
     <div className="container" style={{ paddingTop: '3rem', paddingBottom: '6rem' }}>
-      <Link href="/profiles" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', marginBottom: '2rem', fontSize: '0.9rem' }}>
-        <ArrowLeft size={16} /> Back to Profiles
-      </Link>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '3rem', alignItems: 'start' }}>
-        
-        {/* Main Content */}
-        <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4 }}>
-          <div style={{ marginBottom: '3rem' }}>
-            <h1 style={{ fontSize: '3.5rem', marginBottom: '1rem' }}>{profile.name}</h1>
-            <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '800px' }}>
-              {profile.description}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: '1rem', marginBottom: '3rem', flexWrap: 'wrap' }}>
-            <div className="glass-panel" style={{ padding: '1.5rem', flex: '1 1 200px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>OS Support</div>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                {profile.os_support.map(os => (
-                  <span key={os} style={{ background: 'rgba(255,255,255,0.05)', padding: '0.25rem 0.5rem', borderRadius: '4px', fontSize: '0.9rem' }}>{os}</span>
-                ))}
-              </div>
-            </div>
-            
-            <div className="glass-panel" style={{ padding: '1.5rem', flex: '1 1 200px' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>CUDA Requirement</div>
-              <div style={{ fontSize: '1.1rem', fontWeight: 500, color: profile.cuda_required ? 'var(--brand-accent)' : 'var(--text-primary)' }}>
-                {profile.cuda_required ? "Required" : "Optional / None"}
-              </div>
-              {profile.cuda_versions && (
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.5rem' }}>
-                  Supported: {profile.cuda_versions.join(', ')}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <h2 style={{ fontSize: '2rem', marginBottom: '1.5rem' }}>Included Packages</h2>
-          <div className="glass-panel" style={{ overflow: 'hidden' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-              <thead>
-                <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <th style={{ padding: '1rem 1.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Package</th>
-                  <th style={{ padding: '1rem 1.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Version</th>
-                  <th style={{ padding: '1rem 1.5rem', color: 'var(--text-muted)', fontWeight: 500 }}>Core</th>
-                </tr>
-              </thead>
-              <tbody>
-                {profile.packages.map((pkg, idx) => (
-                  <tr key={pkg.package_name} style={{ borderBottom: idx === profile.packages.length - 1 ? 'none' : '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '1rem 1.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                      <Box size={16} color="var(--brand-primary)" />
-                      {pkg.package_name}
-                      {pkg.cuda_variant && <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--brand-accent)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>CUDA suffix</span>}
-                    </td>
-                    <td style={{ padding: '1rem 1.5rem', fontFamily: 'var(--font-mono)' }}>{pkg.version_spec}</td>
-                    <td style={{ padding: '1rem 1.5rem' }}>
-                      {!pkg.is_optional ? <CheckCircle size={18} color="var(--brand-accent)" /> : <span style={{ color: 'var(--text-muted)' }}>-</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
+      <div style={{ marginBottom: '3rem', textAlign: 'center' }}>
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+          <h1 style={{ fontSize: '3rem', marginBottom: '1rem' }}>
+            ML Environment <span className="text-gradient">Profiles</span>
+          </h1>
+          <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto' }}>
+            Pre-configured, hardware-optimized environment definitions for top machine learning frameworks. Select a profile to generate a safe setup script.
+          </p>
         </motion.div>
-
-        {/* Sidebar Actions */}
-        <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.4, delay: 0.1 }} style={{ position: 'sticky', top: '6rem' }}>
-          <div className="glass-panel" style={{ padding: '2rem' }}>
-            <h3 style={{ fontSize: '1.2rem', marginBottom: '1rem' }}>Generate Script</h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '2rem', lineHeight: 1.5 }}>
-              Use the generation wizard to configure your OS, Python version, and output formats to get your deterministic setup script.
-            </p>
-            <Link href={`/generate?profile=${profile.slug}`} className="btn btn-primary" style={{ width: '100%', marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center', justifyContent: 'center' }}>
-              <Terminal size={18} />
-              Open Wizard
-            </Link>
-            
-            <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '1.5rem 0' }} />
-            
-            <h4 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Supported Python Versions</h4>
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-              {profile.python_versions.map(py => (
-                <span key={py} style={{ background: 'rgba(255,255,255,0.05)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.85rem', fontFamily: 'var(--font-mono)' }}>{py}</span>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-
       </div>
+
+      {/* Filter and Search Bar */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="glass-panel"
+        style={{ padding: '1.5rem', marginBottom: '3rem', display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center', justifyContent: 'space-between' }}
+      >
+        {/* Search */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: 'rgba(255,255,255,0.05)', padding: '0.5rem 1rem', borderRadius: '8px', border: '1px solid var(--border-subtle)', flex: '1 1 300px' }}>
+          <Search size={18} color="var(--text-muted)" />
+          <input
+            type="text"
+            placeholder="Search profiles (e.g. PyTorch, CUDA, YOLO)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', outline: 'none', width: '100%', fontFamily: 'var(--font-sans)', fontSize: '0.95rem' }}
+          />
+        </div>
+
+        {/* Filters */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            <SlidersHorizontal size={16} />
+            <span>Filters:</span>
+          </div>
+
+          {/* OS Dropdown */}
+          <select
+            value={selectedOS}
+            onChange={(e) => setSelectedOS(e.target.value)}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 1rem', outline: 'none', cursor: 'pointer', fontSize: '0.9rem' }}
+          >
+            <option value="ALL">All Operating Systems</option>
+            <option value="WINDOWS">Windows</option>
+            <option value="LINUX">Linux</option>
+            <option value="WSL">WSL</option>
+          </select>
+
+          {/* CUDA Dropdown */}
+          <select
+            value={cudaFilter}
+            onChange={(e) => setCudaFilter(e.target.value)}
+            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-subtle)', borderRadius: '8px', color: 'var(--text-primary)', padding: '0.5rem 1rem', outline: 'none', cursor: 'pointer', fontSize: '0.9rem' }}
+          >
+            <option value="ALL">All CUDA Configs</option>
+            <option value="REQUIRED">CUDA Required</option>
+            <option value="OPTIONAL">CPU / Non-CUDA</option>
+          </select>
+        </div>
+      </motion.div>
+
+      {/* Grid of Profiles */}
+      <AnimatePresence mode="popLayout">
+        {filteredProfiles.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{ textAlign: 'center', padding: '4rem 0', color: 'var(--text-secondary)' }}
+          >
+            <Layers size={48} style={{ margin: '0 auto 1.5rem', opacity: 0.5 }} />
+            <h3>No profiles matched your search or filters.</h3>
+            <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>Try clearing your search query or filters to browse all options.</p>
+          </motion.div>
+        ) : (
+          <motion.div
+            layout
+            style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '2rem' }}
+          >
+            {filteredProfiles.map((p, index) => (
+              <motion.div
+                key={p.slug}
+                layout
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
+                className="glass-panel"
+                style={{ padding: '2rem', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', border: '1px solid var(--border-subtle)', position: 'relative', overflow: 'hidden' }}
+                whileHover={{ y: -5, borderColor: 'var(--brand-primary)', boxShadow: 'var(--shadow-glow)' }}
+              >
+                {/* Glow effect on hover */}
+                <div style={{ position: 'absolute', top: 0, right: 0, width: '100px', height: '100px', background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+                    <div style={{ background: 'rgba(99, 102, 241, 0.1)', color: 'var(--brand-primary)', padding: '0.5rem', borderRadius: '8px' }}>
+                      <Box size={24} />
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {p.cuda_required ? (
+                        <span style={{ fontSize: '0.75rem', background: 'rgba(16, 185, 129, 0.1)', color: 'var(--brand-accent)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontWeight: 600 }}>CUDA Req</span>
+                      ) : (
+                        <span style={{ fontSize: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>CPU / CPU+GPU</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <h3 style={{ fontSize: '1.4rem', marginBottom: '0.75rem' }}>{p.name}</h3>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: 1.5, marginBottom: '1.5rem', minHeight: '4.5rem' }}>
+                    {p.description}
+                  </p>
+
+                  {/* OS & Python specs */}
+                  <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: '1rem', marginBottom: '1.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Platforms:</span>
+                      <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{p.os_support.join(', ')}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>Python:</span>
+                      <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{p.python_versions.join(', ')}</span>
+                    </div>
+                  </div>
+
+                  {/* Packages previews */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '2rem' }}>
+                    {p.packages && p.packages.slice(0, 3).map((pkg) => (
+                      <span key={pkg.package_name} style={{ fontSize: '0.8rem', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-subtle)', padding: '0.2rem 0.5rem', borderRadius: '4px', color: 'var(--text-secondary)' }}>
+                        {pkg.package_name}@{pkg.version_spec}
+                      </span>
+                    ))}
+                    {p.packages && p.packages.length > 3 && (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', alignSelf: 'center' }}>
+                        +{p.packages.length - 3} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', width: '100%' }}>
+                  <Link href={`/profiles/${p.slug}`} className="btn btn-secondary" style={{ flex: 1, fontSize: '0.9rem', padding: '0.6rem 0' }}>
+                    Details
+                  </Link>
+                  <Link href={`/generate?profile=${p.slug}`} className="btn btn-primary" style={{ flex: 1.5, fontSize: '0.9rem', padding: '0.6rem 0', display: 'flex', gap: '0.4rem', justifyContent: 'center', alignItems: 'center' }}>
+                    <Terminal size={14} />
+                    Generate
+                  </Link>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
