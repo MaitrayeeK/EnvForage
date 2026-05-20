@@ -3,7 +3,12 @@ Unit tests for the Compatibility Resolver.
 No mocks for matrix data — the matrix IS the ground truth.
 """
 import pytest
-from app.compatibility.errors import IncompatibilityError, UnsupportedOSError, UnknownVersionError
+
+from app.compatibility.errors import (
+    IncompatibilityError,
+    UnknownVersionError,
+    UnsupportedOSError,
+)
 from app.compatibility.models import PackageConstraint
 from app.compatibility.resolver import CompatibilityResolver
 

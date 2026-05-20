@@ -9,7 +9,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from app.templates.models import RenderResult, TemplateContext
-from app.templates.safety import SafetyViolationError, validate_rendered_output
+from app.templates.safety import validate_rendered_output
 
 # ── Template directory ─────────────────────────────────────────────────────────
 TEMPLATES_DIR = Path(__file__).parent / "jinja"

@@ -1,7 +1,6 @@
-from dataclasses import dataclass
+from app.compatibility.models import ResolvedEnvironment, ResolvedPackage
 from app.templates.engine import TemplateRenderer
 from app.templates.models import TemplateContext
-from app.compatibility.models import ResolvedEnvironment, ResolvedPackage
 
 
 def make_context(

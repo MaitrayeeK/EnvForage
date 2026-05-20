@@ -16,6 +16,7 @@ os.environ.setdefault(
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
 from app.database import Base
 
 # Use in-memory SQLite for unit tests (no Postgres needed)
