@@ -8,8 +8,10 @@ no script passes without this validation.
 import asyncio
 import logging
 import re
-from app.ai.providers.base import LLMProvider  
+
 from pydantic import BaseModel
+
+from app.ai.providers.base import LLMProvider
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +60,9 @@ class SafetyViolationError(Exception):
 
 
 def validate_rendered_output(
-    content: str, 
-    template_name: str = "", 
-    llm_client: LLMProvider | None = None  
+    content: str,
+    template_name: str = "",
+    llm_client: LLMProvider | None = None,
 ) -> str:
     """
     Scan rendered template output for forbidden patterns using Regex and an optional AI engine.
@@ -75,28 +77,34 @@ def validate_rendered_output(
                 description=description,
                 context=f"Template: {template_name}",
             )
-            
+
     if llm_client:
         system_prompt = (
             "You are a strict Linux security auditor. Review the user's generated bash script. "
             "Ensure it does not contain malicious code, hidden payloads, or destructive behavior."
         )
         user_message = f"Verify this script:\n\n{content}"
-        
+
         try:
-            method_to_call = getattr(llm_client, "generate_response", getattr(llm_client, "complete", None))
-            
+            method_to_call = getattr(
+                llm_client,
+                "generate_response",
+                getattr(llm_client, "complete", None),
+            )
+
             if method_to_call is None:
-                raise AttributeError("LLM client does not implement a recognized completion method.")
-            
+                raise AttributeError(
+                    "LLM client does not implement a recognized completion method."
+                )
+
             verdict = asyncio.run(
                 method_to_call(
                     system_prompt=system_prompt,
                     user_message=user_message,
-                    response_model=AISafetyVerdict
+                    response_model=AISafetyVerdict,
                 )
             )
-            
+
             if not verdict.is_safe:
                 raise SafetyViolationError(
                     pattern="AI_SAFETY_FILTER_FLAG",
