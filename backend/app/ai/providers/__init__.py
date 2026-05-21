@@ -10,7 +10,7 @@ def get_provider() -> LLMProvider:
         - ``mock``       → deterministic responses for testing
         - ``openrouter`` → routes to 100+ models via OpenRouter API
         - ``openai``     → direct OpenAI API
-        - ``ollama``     → local inference (not yet implemented)
+        - ``ollama``     → local inference (air gapped, implemented)
 
     Returns:
         An instance of a class implementing :class:`LLMProvider`.
@@ -48,11 +48,11 @@ def get_provider() -> LLMProvider:
         )
 
     if provider_name == "ollama":
-        raise LLMProviderError(
-            "ollama",
-            "Ollama local provider is not yet implemented. "
-            "Use 'openrouter' or 'mock' for now.",
-        )
+        from app.ai.providers.ollama import OllamaProvider
+        return OllamaProvider(
+            base_url=settings.ollama_base_url,
+            model=settings.ollama_model,
+    )
 
     raise LLMProviderError(
         provider_name,
