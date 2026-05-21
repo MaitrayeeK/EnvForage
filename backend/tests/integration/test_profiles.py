@@ -4,6 +4,7 @@ from app.main import app
 from app.database import get_db
 from app.models.profile import EnvironmentProfile, ProfilePackage
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,7 +74,9 @@ async def test_profile_crud_lifecycle(client, db_session):
 
     # Verify state in DB directly
     db_result = await db_session.execute(
-        select(EnvironmentProfile).where(EnvironmentProfile.slug == profile_slug)
+        select(EnvironmentProfile)
+        .options(selectinload(EnvironmentProfile.packages))
+        .where(EnvironmentProfile.slug == profile_slug)
     )
     db_profile = db_result.scalar_one_or_none()
     assert db_profile is not None

@@ -1,14 +1,16 @@
 """
 Profile service — business logic for profile CRUD operations.
 """
+from datetime import datetime, timezone
 import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models.profile import EnvironmentProfile
-from app.schemas.profile import ProfileFilters
+from app.models.profile import EnvironmentProfile, ProfilePackage
+from app.schemas.profile import ProfileFilters, ProfileCreateSchema
+
 
 
 async def list_profiles(

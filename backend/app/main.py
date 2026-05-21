@@ -16,10 +16,10 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     """Manage application startup and shutdown."""
     # Startup
     settings = get_settings()
-    print(f"🚀 EnvForge API {settings.app_version} starting [{settings.environment}]")
+    print(f"[START] EnvForge API {settings.app_version} starting [{settings.environment}]")
     yield
     # Shutdown
-    print("🛑 EnvForge API shutting down")
+    print("[SHUTDOWN] EnvForge API shutting down")
 
 
 def create_app() -> FastAPI:
