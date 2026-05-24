@@ -271,4 +271,3 @@ async def test_stream_connection_error():
                 MockResponse,
             ):
                 pass
-            
