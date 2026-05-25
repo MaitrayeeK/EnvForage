@@ -33,11 +33,22 @@ def _error_response(status_code: int, code: str, message: str, details: dict) ->
     )
 
 
+def _redact_validation_errors(errors: list) -> list:
+    """Strip user-supplied input values from validation errors before
+    logging or returning them to the client."""
+    redacted = []
+    for error in errors:
+        redacted.append({
+            "type": error.get("type"),
+            "loc": list(error.get("loc", [])),
+            "msg": error.get("msg"),
+        })
+    return redacted
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Register application-wide exception handlers."""
 
-    # Register every AppError subclass explicitly so FastAPI routes them
-    # correctly regardless of MRO/middleware ordering issues.
     async def app_exception_handler(request: Request, exc: AppError) -> JSONResponse:
         logger.error("%s: %s", exc.error_code, exc.message)
         return _error_response(exc.status_code, exc.error_code, exc.message, exc.details or {})
@@ -48,20 +59,19 @@ def register_exception_handlers(app: FastAPI) -> None:
         ValidationError,
         InternalServerError,
         AIServiceUnavailableError,
-        AppError,  # catch-all for any future AppError subclasses
+        AppError,
     ):
         app.add_exception_handler(exc_class, app_exception_handler)
 
-    # Request validation errors (422)
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
         request: Request,
         exc: RequestValidationError,
     ) -> JSONResponse:
-        logger.warning("Validation error: %s", exc.errors())
-        return _error_response(422, "VALIDATION_ERROR", "Request validation failed.", exc.errors())
+        redacted = _redact_validation_errors(exc.errors())
+        logger.warning("Validation error: %s", redacted)
+        return _error_response(422, "VALIDATION_ERROR", "Request validation failed.", redacted)
 
-    # True catch-all for unexpected errors (must be last)
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(
         request: Request,
