@@ -7,7 +7,8 @@ This module never executes generated code; it only renders text.
 from collections.abc import Sequence
 from pathlib import Path
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
+from jinja2 import FileSystemLoader, StrictUndefined, select_autoescape
+from jinja2.sandbox import SandboxedEnvironment
 
 from app.templates.models import RenderResult, TemplateContext
 from app.templates.safety import validate_rendered_output
@@ -40,8 +41,8 @@ PROFILE_VERIFY_TEMPLATES: dict[str, str] = {
     "opencv-beginner":     "verify_opencv.sh",
 }
 
-def _build_jinja_env() -> Environment:
-    return Environment(
+def _build_jinja_env() -> SandboxedEnvironment:
+    return SandboxedEnvironment(
         loader=FileSystemLoader(str(TEMPLATES_DIR)),
         undefined=StrictUndefined,
         autoescape=select_autoescape(enabled_extensions=(), default_for_string=False),
