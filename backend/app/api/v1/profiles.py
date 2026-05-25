@@ -54,7 +54,7 @@ async def get_profile(slug: str, db: DB) -> ProfileDetailSchema:
     """
     profile = await profile_service.get_profile_by_slug(db, slug)
     if profile is None:
-        raise EntityNotFoundError(resource=f"Profile '{slug}'")
+        raise EntityNotFoundError(resource=f"Profile '{slug}'", error_code="PROFILE_NOT_FOUND")
     return ProfileDetailSchema.model_validate(profile)
 
 
@@ -87,4 +87,4 @@ async def delete_profile(slug: str, db: DB) -> None:
     """
     deleted = await profile_service.delete_profile(db, slug)
     if not deleted:
-        raise EntityNotFoundError(resource=f"Profile '{slug}'")
+        raise EntityNotFoundError(resource=f"Profile '{slug}'", error_code="PROFILE_NOT_FOUND")
