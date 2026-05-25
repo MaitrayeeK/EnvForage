@@ -15,7 +15,7 @@ authors = ["EnvForge <envforge@example.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^{{ python_version }}"
+python = "{{ python_version }}.*"
 {% for pkg in packages %}
 {{ pkg.name }} = "{{ pkg.version }}{% if pkg.cuda_variant %}+{{ pkg.cuda_variant }}{% endif %}"
 {% endfor %}
