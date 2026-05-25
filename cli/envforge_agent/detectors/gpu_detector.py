@@ -7,6 +7,8 @@ Never raises — returns empty list if nvidia-smi is not available.
 """
 from __future__ import annotations
 
+import subprocess
+
 import logging
 import re
 import subprocess
