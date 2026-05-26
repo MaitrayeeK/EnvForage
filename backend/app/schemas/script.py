@@ -15,7 +15,7 @@ OutputFormat = Literal[
     "devcontainer.json",
     ".gitignore",
     "pyproject.toml",
-    "poetry.toml"
+    "pyproject.poetry.toml"
 ]
 
 class GenerationRequest(BaseModel):
@@ -36,6 +36,10 @@ class GenerationRequest(BaseModel):
     use_uv: bool = Field(
         default=False,
         description="Use uv instead of pip for package installation",
+    )
+    use_micromamba: bool = Field(
+        default=False,
+        description="Use micromamba instead of standard Conda/Miniconda for environment management",
     )
 
 
