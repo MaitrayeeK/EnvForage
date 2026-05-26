@@ -28,7 +28,7 @@ def _resolve_source(spec: str) -> Source:
 
     path = Path(spec)
     if path.exists() and path.is_file():
-        if path.suffix == ".toml":
+        if path.suffix.lower() == ".toml":
             return ConfigFileSource(path)
         return LockfileSource(path)
 

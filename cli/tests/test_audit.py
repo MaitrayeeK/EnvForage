@@ -523,3 +523,16 @@ class TestAuditCommandWithConfigFile:
         result = CliRunner().invoke(audit_command, [str(a), str(b)])
         assert result.exit_code == 0
         assert "requests" in result.output.lower()
+        
+    def test_uppercase_toml_extension_routes_to_config_source(self, tmp_path: Path):
+        """Path suffix matching is case-insensitive — a .TOML file should
+        be parsed as pyproject, not misrouted to LockfileSource."""
+        a = tmp_path / "a.TOML"
+        a.write_text('[tool.poetry.dependencies]\nrequests = "2.31.0"\n')
+        b = tmp_path / "b.toml"
+        b.write_text('[tool.poetry.dependencies]\nrequests = "2.32.0"\n')
+
+        result = CliRunner().invoke(audit_command, [str(a), str(b)])
+        assert result.exit_code == 0
+        assert "requests" in result.output.lower()
+        assert "minor" in result.output.lower()
