@@ -159,57 +159,7 @@ class AITroubleshootService:
         )
 
         return llm_result
-
-    def _gate_fixes(
-        self, fixes: list[SuggestedFix], session_id: str
-    ) -> tuple[list[SuggestedFix], int]:
-        """Suppress fixes whose confidence_score is below LOW_CONFIDENCE_GATE."""
-        from .prompts.system import LOW_CONFIDENCE_GATE
-        accepted, suppressed = [], 0
-        for fix in fixes:
-            if fix.confidence_score < LOW_CONFIDENCE_GATE:
-                logger.warning(
-                    "session=%s step=%d '%s' suppressed (score=%.2f < gate=%.2f)",
-                    session_id, fix.step, fix.title,
-                    fix.confidence_score, LOW_CONFIDENCE_GATE,
-                )
-                suppressed += 1
-            else:
-                accepted.append(fix)
-        return accepted, suppressed
-
-    def _recalculate_overall_confidence(self, fixes: list[SuggestedFix]) -> float:
-        """
-        Weighted average of per-fix scores.
-        CRITICAL=3x, WARNING=2x, INFO=1x weight.
-        Returns 0.0 if no fixes present.
-        """
-        if not fixes:
-            return 0.0
-        weight_map = {"CRITICAL": 3.0, "WARNING": 2.0, "INFO": 1.0}
-        total_w, weighted_sum = 0.0, 0.0
-        for fix in fixes:
-            w = weight_map.get(fix.severity, 1.0)
-            weighted_sum += fix.confidence_score * w
-            total_w += w
-        return round(weighted_sum / total_w, 4)
-
-    def _log_confidence_audit(
-        self, session_id: str, fixes: list[SuggestedFix], suppressed: int
-    ) -> None:
-        for fix in fixes:
-            logger.info(
-                "CONFIDENCE_AUDIT session=%s step=%d level=%s score=%.2f "
-                "matrix_backed=%s severity=%s",
-                session_id, fix.step, fix.confidence_level.value,
-                fix.confidence_score, fix.is_matrix_backed, fix.severity,
-            )
-        if suppressed:
-            logger.info(
-                "CONFIDENCE_AUDIT session=%s suppressed_fixes=%d",
-                session_id, suppressed,
-            )
-
+    
     async def stream_troubleshoot(
         self,
         request: TroubleshootRequest,
@@ -388,7 +338,7 @@ class AITroubleshootService:
         """Suppress fixes whose confidence_score is below LOW_CONFIDENCE_GATE."""
         accepted, suppressed = [], 0
         for fix in fixes:
-            if fix.confidence_score < LOW_CONFIDENCE_GATE:
+            if (fix.confidence_score or 0.0) < LOW_CONFIDENCE_GATE:
                 logger.warning(
                     "session=%s step=%d '%s' suppressed (score=%.2f < gate=%.2f)",
                     session_id, fix.step, fix.title,
@@ -413,7 +363,7 @@ class AITroubleshootService:
         total_w, weighted_sum = 0.0, 0.0
         for fix in fixes:
             w = weight_map.get(fix.severity, 1.0)
-            weighted_sum += fix.confidence_score * w
+            weighted_sum += (fix.confidence_score or 0.0) * w
             total_w += w
         return round(weighted_sum / total_w, 4)
 
@@ -425,7 +375,7 @@ class AITroubleshootService:
         for fix in fixes:
             logger.info(
                 "CONFIDENCE_AUDIT session=%s step=%d level=%s score=%.2f matrix_backed=%s severity=%s",
-                session_id, fix.step, fix.confidence_level.value,
+                session_id, fix.step, fix.confidence_level.value if fix.confidence_level else "unknown",
                 fix.confidence_score, fix.is_matrix_backed, fix.severity,
             )
         if suppressed:

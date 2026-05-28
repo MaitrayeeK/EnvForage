@@ -15,8 +15,8 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
-
+from pydantic import BaseModel, Field, field_validator, model_validator, ValidationInfo
+from typing import Any
 # Confidence primitives
 
 class FixConfidenceLevel(StrEnum):
@@ -77,7 +77,7 @@ class SuggestedFix(BaseModel):
 
     @field_validator("uncertainty_reason")
     @classmethod
-    def uncertainty_required_for_non_high(cls, v: str | None, info) -> str | None:
+    def uncertainty_required_for_non_high(cls, v: str | None, info: ValidationInfo) -> str | None:
         level = info.data.get("confidence_level")
         if level is None:
             return v  # skip if confidence fields not provided
@@ -90,7 +90,7 @@ class SuggestedFix(BaseModel):
 
     @field_validator("is_matrix_backed")
     @classmethod
-    def matrix_backed_implies_high(cls, v: bool | None, info) -> bool | None:
+    def matrix_backed_implies_high(cls, v: bool | None, info: ValidationInfo) -> bool | None:
         if v is None:
             return v  # skip if not provided
         level = info.data.get("confidence_level")
@@ -100,11 +100,11 @@ class SuggestedFix(BaseModel):
 
     @field_validator("confidence_score")
     @classmethod
-    def score_consistent_with_level(cls, v: float, info) -> float:
+    def score_consistent_with_level(cls, v: float | None, info: ValidationInfo) -> float | None:
         import logging
         logger = logging.getLogger(__name__)
         level = info.data.get("confidence_level")
-        if level is None:
+        if level is None or v is None:
             return v
         if level == FixConfidenceLevel.HIGH and v < 0.75:
             logger.warning("confidence_score %.2f low for HIGH-level fix (expected >=0.75)", v)
@@ -130,9 +130,9 @@ class SuggestedFix(BaseModel):
         return self
 
 class TroubleshootRequest(BaseModel):
-    diagnostic: dict
-    verification: dict = Field(default_factory=dict)
-    profile: dict = Field(default_factory=dict)
+    diagnostic: dict[str,Any]
+    verification: dict[str,Any] = Field(default_factory=dict[str,Any])
+    profile: dict[str,Any] = Field(default_factory=dict[str,Any])
     profile_slug: str | None = None
     profile_name: str | None = None
     target_os: str | None = None
@@ -143,7 +143,6 @@ class TroubleshootRequest(BaseModel):
     max_words: int = Field(default=500, ge=50, le=2000)
     repair_script_available: bool = False
     disclaimer: str = "AI-generated advisory. Review carefully before executing."
-    suppressed_fix_count: int = 0
 
 class TroubleshootResponse(BaseModel):
     session_id: str
