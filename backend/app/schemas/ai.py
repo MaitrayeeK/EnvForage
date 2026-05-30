@@ -94,3 +94,34 @@ class RepairTemplateInfoSchema(BaseModel):
 class RepairTemplateListResponseSchema(BaseModel):
     """GET /api/v1/repair/templates — response body."""
     templates: list[RepairTemplateInfoSchema]
+
+
+# ── Diagnose Explain ─────────────────────────────────────────────────────────
+
+class DiagnoseExplainResponse(BaseModel):
+    """POST /api/v1/diagnose/explain — response body.
+
+    A plain-English explanation of what is wrong and what to do next,
+    produced by the AI Troubleshooting Layer from a DiagnosticReport.
+    """
+    issue_summary: str = Field(
+        ..., description="Plain-English explanation of what is wrong.",
+    )
+    root_cause: str = Field(
+        ..., description="Root cause (e.g. 'CUDA version mismatch').",
+    )
+    suggested_steps: list[str] = Field(
+        ..., description="Ordered remediation steps in plain English. No auto-execution.",
+    )
+    safe_to_auto_fix: bool = Field(
+        False,
+        description="Whether the fix can be mapped to an existing Jinja2 repair template.",
+    )
+    confidence: float = Field(
+        0.0, ge=0.0, le=1.0,
+        description="AI confidence in the diagnosis.",
+    )
+    disclaimer: str = Field(
+        default="AI-generated advisory. Review all suggestions before executing.",
+        description="Safety disclaimer.",
+    )

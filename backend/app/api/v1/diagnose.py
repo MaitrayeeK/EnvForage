@@ -1,12 +1,18 @@
-"""Diagnose endpoint -- POST /api/v1/diagnose."""
+"""Diagnose endpoint -- POST /api/v1/diagnose and POST /api/v1/diagnose/explain."""
 
 import asyncio
+import hashlib
+import json
 import logging
+import time
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
+from app.ai.prompts.system import EXPLAIN_SYSTEM_PROMPT
+from app.ai.providers import get_provider
+from app.ai.providers.base import LLMProviderError
 from app.api.deps import DB
 from app.compatibility.errors import (
     IncompatibilityError,
@@ -15,9 +21,12 @@ from app.compatibility.errors import (
 )
 from app.compatibility.models import OSTarget, PackageConstraint, ResolvedEnvironment
 from app.compatibility.resolver import CompatibilityResolver
+from app.core.exceptions import AIServiceUnavailableError, InternalServerError
 from app.middleware.rate_limit import ai_rate_limit
+from app.models.ai_session import AIAuditLog
 from app.models.diagnostic import DiagnosticReport
 from app.models.profile import EnvironmentProfile
+from app.schemas.ai import DiagnoseExplainResponse
 from app.schemas.diagnostic import (
     CompatibilityIssue,
     DiagnoseResponse,
@@ -25,6 +34,7 @@ from app.schemas.diagnostic import (
 )
 from app.schemas.profile import ProfileFilters
 from app.services.profile_service import list_profiles
+from app.templates.safety import SafetyViolationError, validate_rendered_output
 
 logger = logging.getLogger(__name__)
 
@@ -192,3 +202,104 @@ async def diagnose(
         issues=issues,
         recommendations=recommendations,
     )
+
+
+@router.post(
+    "/diagnose/explain",
+    response_model=DiagnoseExplainResponse,
+    status_code=200,
+    summary="AI-powered plain-English explanation of diagnostic issues",
+    description=(
+        "Accept a DiagnosticReport JSON and return a plain-English explanation "
+        "of what is broken and ordered remediation steps. Does NOT execute any "
+        "command on the user's machine."
+    ),
+    tags=["AI"],
+    responses={
+        200: {"description": "AI explanation returned successfully"},
+        422: {"description": "Invalid diagnostic report payload"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "AI provider unavailable"},
+    },
+)
+async def diagnose_explain(
+    report: DiagnosticReportSchema,
+    db: DB,
+    _rate_limit: None = Depends(ai_rate_limit),
+) -> DiagnoseExplainResponse:
+    """
+    Accept a DiagnosticReport and return a structured AI explanation
+    of what is wrong with the environment, using only validated fields.
+
+    The AI does NOT replace the CompatibilityEngine — it only reads
+    its structured input. No commands are executed.
+    """
+    start_time = time.monotonic()
+    report_json = report.model_dump(mode="json")
+    input_hash = hashlib.sha256(
+        json.dumps(report_json, sort_keys=True).encode()
+    ).hexdigest()[:64]
+
+    user_message = json.dumps(report_json, indent=2)
+
+    provider = get_provider()
+    provider_name = type(provider).__name__
+
+    try:
+        llm_result = await provider.complete(
+            system_prompt=EXPLAIN_SYSTEM_PROMPT,
+            user_message=user_message,
+            response_model=DiagnoseExplainResponse,
+        )
+    except LLMProviderError as exc:
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+        _log_explain_audit(db, input_hash, False, str(exc), provider_name, 0, latency_ms)
+        raise AIServiceUnavailableError(
+            provider=provider_name,
+            reason=getattr(exc, "reason", str(exc)),
+        ) from exc
+
+    # Safety filter: validate all text fields before returning to user
+    try:
+        validate_rendered_output(llm_result.issue_summary, "ai_explain_summary")
+        validate_rendered_output(llm_result.root_cause, "ai_explain_root_cause")
+        for step in llm_result.suggested_steps:
+            validate_rendered_output(step, "ai_explain_step")
+    except SafetyViolationError as exc:
+        latency_ms = int((time.monotonic() - start_time) * 1000)
+        _log_explain_audit(db, input_hash, False, str(exc), provider_name, 0, latency_ms)
+        raise InternalServerError(
+            "AI response was blocked by the safety filter."
+        ) from exc
+
+    latency_ms = int((time.monotonic() - start_time) * 1000)
+    _log_explain_audit(db, input_hash, True, None, provider_name, 0, latency_ms)
+
+    return llm_result
+
+
+def _log_explain_audit(
+    db: "DB",
+    input_hash: str,
+    safety_passed: bool,
+    safety_violation: str | None,
+    provider: str,
+    tokens_used: int,
+    latency_ms: int,
+) -> None:
+    """Write an audit log entry for the explain interaction."""
+    try:
+        log = AIAuditLog(
+            id=uuid.uuid4(),
+            session_id=None,
+            input_hash=input_hash,
+            safety_passed=safety_passed,
+            safety_violation=safety_violation,
+            provider=provider,
+            tokens_used=tokens_used,
+            latency_ms=latency_ms,
+            created_at=datetime.utcnow(),
+        )
+        db.add(log)
+    except Exception as exc:
+        logger.exception("Failed to write explain audit log: %s", exc)
